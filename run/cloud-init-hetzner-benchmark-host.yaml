@@ -1,0 +1,125 @@
+#cloud-config
+package_update: false
+package_upgrade: false
+
+write_files:
+  - path: /usr/local/bin/bootstrap-spring-boot-startup-host.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      export HOME=/root
+      export DEBIAN_FRONTEND=noninteractive
+      export PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+      GO_VERSION=1.26.2
+      TASK_VERSION=v3.45.4
+      BENCH_ROOT=/opt/spring-boot-startup
+      READY_MARKER="${BENCH_ROOT}/.host-ready"
+      LOG_FILE=/var/log/bootstrap-spring-boot-startup.log
+
+      exec > >(tee -a "${LOG_FILE}") 2>&1
+
+      log() {
+        echo "[$(date --iso-8601=seconds)] $*"
+      }
+
+      log "Updating Debian packages"
+      apt-get update
+      apt-get -y full-upgrade
+      apt-get install -y \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        lsb-release \
+        tar \
+        xz-utils
+
+      log "Installing Docker from the official Debian repository"
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      . /etc/os-release
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${VERSION_CODENAME} stable" \
+        > /etc/apt/sources.list.d/docker.list
+      apt-get update
+      apt-get install -y \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-ce \
+        docker-ce-cli \
+        docker-compose-plugin
+      systemctl enable --now docker
+      docker version
+      docker compose version
+
+      log "Installing Go ${GO_VERSION} from go.dev"
+      rm -rf /usr/local/go
+      curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+      tar -C /usr/local -xzf /tmp/go.tgz
+      ln -sf /usr/local/go/bin/go /usr/local/bin/go
+      ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+      cat > /etc/profile.d/go.sh <<'EOF'
+      export PATH=/usr/local/go/bin:$PATH
+      EOF
+      go version
+
+      log "Installing Task because the benchmark is driven by Taskfile.yml"
+      GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/go-task/task/v3/cmd/task@${TASK_VERSION}
+      task --version
+
+      install -d "${BENCH_ROOT}/workspace"
+      touch "${READY_MARKER}"
+
+      log "Benchmark host bootstrap complete"
+      log "Rebooting host so the benchmark starts from a clean post-bootstrap state"
+      sync
+      systemctl reboot
+
+  - path: /usr/local/bin/run-spring-boot-startup-benchmarks.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      export HOME=/root
+      export PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+      BENCH_ROOT=/opt/spring-boot-startup
+      READY_MARKER="${BENCH_ROOT}/.host-ready"
+      REPO_DIR="${REPO_DIR:-${BENCH_ROOT}/workspace}"
+      LOG_FILE=/var/log/run-spring-boot-startup-benchmarks.log
+
+      exec > >(tee -a "${LOG_FILE}") 2>&1
+
+      if [ ! -f "${READY_MARKER}" ]; then
+        echo "Host bootstrap has not completed yet. Wait for ${READY_MARKER}." >&2
+        exit 1
+      fi
+
+      if [ ! -f "${REPO_DIR}/Taskfile.yml" ]; then
+        echo "Expected benchmark repo at ${REPO_DIR}, but Taskfile.yml is missing." >&2
+        exit 1
+      fi
+
+      TASK_NAME=bench:all
+      if [ "$#" -gt 0 ]; then
+        TASK_NAME="$1"
+        shift
+      fi
+
+      cd "${REPO_DIR}"
+      mkdir -p results
+      find results -maxdepth 1 -type f \( -name '*.json' -o -name 'summary.md' \) -delete
+
+      task validate
+      task "${TASK_NAME}" "$@"
+
+runcmd:
+  - [cloud-init-per, once, spring-boot-startup-bootstrap, /usr/local/bin/bootstrap-spring-boot-startup-host.sh]
+
+final_message: "cloud-init finished after $UPTIME seconds. Review /var/log/bootstrap-spring-boot-startup.log for the benchmark host bootstrap log."

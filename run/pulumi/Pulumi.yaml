@@ -1,0 +1,3 @@
+name: spring-boot-startup-hetzner
+runtime: go
+description: Provision a Hetzner benchmark host for the spring-boot-startup project.

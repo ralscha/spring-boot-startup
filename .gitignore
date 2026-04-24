@@ -1,0 +1,5 @@
+*.exe
+*.log
+results/
+run/pulumi/.pulumi/
+run/pulumi/Pulumi.*.yaml

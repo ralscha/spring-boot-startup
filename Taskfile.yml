@@ -1,0 +1,129 @@
+version: '3'
+
+env:
+  DOCKER_BUILDKIT: '1'
+
+vars:
+  PETCLINIC_REPO: https://github.com/spring-projects/spring-petclinic.git
+  PETCLINIC_REF: main
+  SOURCE_IMAGE: alpine/git:2.52.0
+  BUILDER_IMAGE: azul/zulu-openjdk:26-latest
+  RUNTIME_IMAGE: azul/zulu-openjdk:26-jre-latest
+  CRAC_IMAGE: azul/zulu-openjdk:26-jre-crac-latest
+  SPRING_BOOT_VERSION: '4.0.6'
+  RESULTS_DIR: results
+  BENCH_RUNS: '15'
+  STARTUP_TIMEOUT: 2m
+  POLL_INTERVAL: 100ms
+  ENDPOINT_PATH: /owners/1
+  CONTAINER_PORT: '8080'
+  IMAGE_BASELINE: spring-boot-startup/baseline:latest
+  IMAGE_EXTRACT: spring-boot-startup/extract:latest
+  IMAGE_AOT_CACHE: spring-boot-startup/aot-cache:latest
+  IMAGE_SPRING_AOT_AOT_CACHE: spring-boot-startup/spring-aot-aot-cache:latest
+  IMAGE_CRAC_CHECKPOINT: spring-boot-startup/crac-checkpoint:latest
+  IMAGE_CRAC: spring-boot-startup/crac:latest
+  CRAC_CONTAINER_NAME: spring-boot-startup-crac-checkpoint
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+    silent: true
+
+  validate:
+    desc: Validate the host-side scaffold
+    cmds:
+      - go build ./...
+      - task --list-all
+
+  build:baseline:
+    desc: Build the baseline fat-jar image
+    cmds:
+      - docker build --file docker/baseline.Dockerfile --tag {{.IMAGE_BASELINE}} --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}} --build-arg RUNTIME_IMAGE={{.RUNTIME_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}} --build-arg PETCLINIC_REF={{.PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}} .
+
+  build:extract:
+    desc: Build the extracted-layout image
+    cmds:
+      - docker build --file docker/extract.Dockerfile --tag {{.IMAGE_EXTRACT}} --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}} --build-arg RUNTIME_IMAGE={{.RUNTIME_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}} --build-arg PETCLINIC_REF={{.PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}} .
+
+  build:aot-cache:
+    desc: Build the extracted-layout plus AOT-cache image
+    cmds:
+      - docker build --file docker/aot-cache.Dockerfile --tag {{.IMAGE_AOT_CACHE}} --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}} --build-arg RUNTIME_IMAGE={{.RUNTIME_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}} --build-arg PETCLINIC_REF={{.PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}} .
+
+  build:spring-aot-aot-cache:
+    desc: Build the Spring AOT plus AOT-cache image
+    cmds:
+      - docker build --file docker/spring-aot-aot-cache.Dockerfile --tag {{.IMAGE_SPRING_AOT_AOT_CACHE}} --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}} --build-arg RUNTIME_IMAGE={{.RUNTIME_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}} --build-arg PETCLINIC_REF={{.PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}} .
+
+  build:crac:
+    desc: Build the extracted-layout plus CRaC image
+    cmds:
+      - cmd: docker rm -f {{.CRAC_CONTAINER_NAME}}
+        ignore_error: true
+      - docker build --file docker/crac.Dockerfile --tag {{.IMAGE_CRAC_CHECKPOINT}} --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}} --build-arg CRAC_IMAGE={{.CRAC_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}} --build-arg PETCLINIC_REF={{.PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}} .
+      - go run ./cmd/crac-checkpoint --container-name {{.CRAC_CONTAINER_NAME}} --image {{.IMAGE_CRAC_CHECKPOINT}} --final-image {{.IMAGE_CRAC}}
+      - cmd: docker rm -f {{.CRAC_CONTAINER_NAME}}
+        ignore_error: true
+
+
+  build:all:
+    desc: Build every benchmark image
+    deps:
+      - build:baseline
+      - build:extract
+      - build:aot-cache
+      - build:spring-aot-aot-cache
+      - build:crac
+
+  bench:baseline:
+    desc: Benchmark the baseline fat-jar image
+    deps:
+      - build:baseline
+    cmds:
+      - go run ./cmd/startup-bench run --variant baseline --image {{.IMAGE_BASELINE}} --runs {{.BENCH_RUNS}} --timeout {{.STARTUP_TIMEOUT}} --poll-interval {{.POLL_INTERVAL}} --endpoint {{.ENDPOINT_PATH}} --container-port {{.CONTAINER_PORT}} --output {{.RESULTS_DIR}}/baseline.json
+
+  bench:extract:
+    desc: Benchmark the extracted-layout image
+    deps:
+      - build:extract
+    cmds:
+      - go run ./cmd/startup-bench run --variant extract --image {{.IMAGE_EXTRACT}} --runs {{.BENCH_RUNS}} --timeout {{.STARTUP_TIMEOUT}} --poll-interval {{.POLL_INTERVAL}} --endpoint {{.ENDPOINT_PATH}} --container-port {{.CONTAINER_PORT}} --output {{.RESULTS_DIR}}/extract.json
+
+  bench:aot-cache:
+    desc: Benchmark the extracted-layout plus AOT-cache image
+    deps:
+      - build:aot-cache
+    cmds:
+      - go run ./cmd/startup-bench run --variant aot-cache --image {{.IMAGE_AOT_CACHE}} --runs {{.BENCH_RUNS}} --timeout {{.STARTUP_TIMEOUT}} --poll-interval {{.POLL_INTERVAL}} --endpoint {{.ENDPOINT_PATH}} --container-port {{.CONTAINER_PORT}} --output {{.RESULTS_DIR}}/aot-cache.json
+
+  bench:spring-aot-aot-cache:
+    desc: Benchmark the Spring AOT plus AOT-cache image
+    deps:
+      - build:spring-aot-aot-cache
+    cmds:
+      - go run ./cmd/startup-bench run --variant spring-aot-aot-cache --image {{.IMAGE_SPRING_AOT_AOT_CACHE}} --runs {{.BENCH_RUNS}} --timeout {{.STARTUP_TIMEOUT}} --poll-interval {{.POLL_INTERVAL}} --endpoint {{.ENDPOINT_PATH}} --container-port {{.CONTAINER_PORT}} --output {{.RESULTS_DIR}}/spring-aot-aot-cache.json
+
+  bench:crac:
+    desc: Benchmark the extracted-layout plus CRaC image
+    deps:
+      - build:crac
+    cmds:
+      - go run ./cmd/startup-bench run --variant crac --image {{.IMAGE_CRAC}} --docker-run-arg=--privileged --runs {{.BENCH_RUNS}} --timeout {{.STARTUP_TIMEOUT}} --poll-interval {{.POLL_INTERVAL}} --endpoint {{.ENDPOINT_PATH}} --container-port {{.CONTAINER_PORT}} --output {{.RESULTS_DIR}}/crac.json
+
+  bench:all:
+    desc: Build, benchmark, and summarize every variant
+    cmds:
+      - task bench:baseline BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
+      - task bench:extract BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
+      - task bench:aot-cache BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
+      - task bench:spring-aot-aot-cache BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
+      - task bench:crac BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
+      - task report
+
+  report:
+    desc: Generate a markdown summary from benchmark JSON files
+    cmds:
+      - go run ./cmd/startup-bench report --input-dir {{.RESULTS_DIR}} --output {{.RESULTS_DIR}}/summary.md
