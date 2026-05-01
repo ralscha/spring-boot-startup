@@ -1,0 +1,1 @@
+Code for the blog post: https://blog.rasc.ch/2026/04/spring-boot-startup.html
