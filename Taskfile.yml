@@ -38,6 +38,11 @@ tasks:
       - go build ./...
       - task --list-all
 
+  build:
+    desc: Build all Go helper programs
+    cmds:
+      - go build ./...
+
   build:baseline:
     desc: Build the baseline fat-jar image
     cmds:

@@ -6,7 +6,7 @@ require (
 	github.com/docker/go-sdk/client v0.1.0-alpha013
 	github.com/docker/go-sdk/container v0.1.0-alpha016
 	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.5.0
+	github.com/moby/moby/client v0.5.1
 )
 
 require (
@@ -22,7 +22,7 @@ require (
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/go-connections v0.7.0 // indirect
+	github.com/docker/go-connections v0.8.1 // indirect
 	github.com/docker/go-sdk/config v0.1.0-alpha013 // indirect
 	github.com/docker/go-sdk/context v0.1.0-alpha013 // indirect
 	github.com/docker/go-sdk/image v0.1.0-alpha015 // indirect
