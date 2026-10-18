@@ -24,7 +24,6 @@ const (
 	projectLabel        = "spring-boot-startup"
 	workspacePath       = "/opt/spring-boot-startup/workspace"
 	readyMarkerPath     = "/opt/spring-boot-startup/.host-ready"
-	benchmarkScriptPath = "/usr/local/bin/run-spring-boot-startup-benchmarks.sh"
 	bootstrapLogPath    = "/var/log/bootstrap-spring-boot-startup.log"
 	cloudInitOutputPath = "/var/log/cloud-init-output.log"
 )
@@ -130,7 +129,8 @@ func main() {
 		ctx.Export("cloudInitLogCommand", pulumi.Sprintf("ssh -i %s %s@%s 'tail -n 200 %s -f'", sshPrivateKeyPath, sshUser, server.Ipv4Address, cloudInitOutputPath))
 		ctx.Export("bootstrapLogCommand", pulumi.Sprintf("ssh -i %s %s@%s 'tail -n 200 %s -f'", sshPrivateKeyPath, sshUser, server.Ipv4Address, bootstrapLogPath))
 		ctx.Export("readyCheckCommand", pulumi.Sprintf("ssh -i %s %s@%s 'test -f %s && echo ready || echo waiting'", sshPrivateKeyPath, sshUser, server.Ipv4Address, readyMarkerPath))
-		ctx.Export("benchmarkRunCommand", pulumi.Sprintf("ssh -i %s %s@%s '%s'", sshPrivateKeyPath, sshUser, server.Ipv4Address, benchmarkScriptPath))
+		// Run from the local repository root so the workspace is uploaded first.
+		ctx.Export("benchmarkRunCommand", pulumi.Sprintf("go run ./cmd/remote-bench --host %s --user %s --identity \"%s\"", server.Ipv4Address, sshUser, sshPrivateKeyPath))
 
 		return nil
 	})

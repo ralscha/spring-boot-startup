@@ -43,7 +43,9 @@ Wait until the exported `readyCheckCommand` prints `ready`, or check for `/opt/s
 
 ## Upload and run the benchmark
 
-Run the local Go helper from the repository root once the host is back after the reboot:
+Run the exported `benchmarkRunCommand` on your local machine, from the repository
+root, once the host is back after the reboot. With the default SSH user and key,
+the equivalent command is:
 
 ```
 go run ./cmd/remote-bench --host <server-ip>
@@ -68,3 +70,5 @@ The runner:
 3. Downloads the remote `results/` directory back into the local workspace
 
 If you prefer a built binary instead of `go run`, build it locally and execute that binary from the repository root or pass `--local-dir` explicitly.
+
+
