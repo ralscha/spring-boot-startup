@@ -1,5 +1,6 @@
 *.exe
 *.log
 results/
+/spring-boot-startup.md
 run/pulumi/.pulumi/
 run/pulumi/Pulumi.*.yaml

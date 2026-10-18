@@ -1,16 +1,19 @@
 version: '3'
 
+includes:
+  java28: Taskfile.java28.yml
+
 env:
   DOCKER_BUILDKIT: '1'
 
 vars:
   PETCLINIC_REPO: https://github.com/spring-projects/spring-petclinic.git
-  PETCLINIC_REF: main
-  SOURCE_IMAGE: alpine/git:2.52.0
-  BUILDER_IMAGE: azul/zulu-openjdk:26-latest
-  RUNTIME_IMAGE: azul/zulu-openjdk:26-jre-latest
-  CRAC_IMAGE: azul/zulu-openjdk:26-jre-crac-latest
-  SPRING_BOOT_VERSION: '4.0.6'
+  PETCLINIC_REF: 500158f732419217507c7656904b8e6aa1bcc0d6
+  SOURCE_IMAGE: alpine/git:2.54.0
+  BUILDER_IMAGE: azul-zulu:27-jdk
+  RUNTIME_IMAGE: azul-zulu:27-jre
+  CRAC_IMAGE: spring-boot-startup/zulu-crac:27.0.0
+  SPRING_BOOT_VERSION: '4.1.1'
   RESULTS_DIR: results
   BENCH_RUNS: '15'
   STARTUP_TIMEOUT: 2m
@@ -63,8 +66,15 @@ tasks:
     cmds:
       - docker build --file docker/spring-aot-aot-cache.Dockerfile --tag {{.IMAGE_SPRING_AOT_AOT_CACHE}} --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}} --build-arg RUNTIME_IMAGE={{.RUNTIME_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}} --build-arg PETCLINIC_REF={{.PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}} .
 
+  build:crac-runtime:
+    desc: Build the checksum-verified Zulu Java 27 CRaC runtime
+    cmds:
+      - docker build --file docker/zulu-crac.Dockerfile --tag {{.CRAC_IMAGE}} .
+
   build:crac:
     desc: Build the extracted-layout plus CRaC image
+    deps:
+      - build:crac-runtime
     cmds:
       - cmd: docker rm -f {{.CRAC_CONTAINER_NAME}}
         ignore_error: true
@@ -82,6 +92,7 @@ tasks:
       - build:aot-cache
       - build:spring-aot-aot-cache
       - build:crac
+      - java28:build
 
   bench:baseline:
     desc: Benchmark the baseline fat-jar image
@@ -125,6 +136,7 @@ tasks:
       - task bench:extract BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
       - task bench:aot-cache BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
       - task bench:spring-aot-aot-cache BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
+      - task: java28:bench
       - task bench:crac BENCH_RUNS={{.BENCH_RUNS}} STARTUP_TIMEOUT={{.STARTUP_TIMEOUT}} POLL_INTERVAL={{.POLL_INTERVAL}} ENDPOINT_PATH={{.ENDPOINT_PATH}} CONTAINER_PORT={{.CONTAINER_PORT}}
       - task report
 

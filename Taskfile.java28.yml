@@ -1,0 +1,70 @@
+version: '3'
+
+vars:
+  JAVA28_BUILD: '20'
+  JAVA28_SHA256_AMD64: fd0b94162fede0e2f7a31106a38d0105b23e96521d8c61c0f1a0967e1383b59d
+  JAVA28_SHA256_ARM64: a680de4b2f2e749f2257cc707fa250de84b5178bbf61f984f9811ce7d90e5481
+  JAVA28_IMAGE: spring-boot-startup/jdk:28-ea-{{.JAVA28_BUILD}}
+  # Use the same application source as the Java 27 suite.
+  JAVA28_PETCLINIC_REF: '{{.PETCLINIC_REF}}'
+  JAVA28_MAX_HEAP: 1g
+  JAVA28_RESULTS_DIR: '{{.RESULTS_DIR}}/java28'
+
+tasks:
+  build:jdk:
+    desc: Build the checksum-verified OpenJDK 28 EA runtime
+    cmds:
+      - docker build --file docker/java28.Dockerfile --tag {{.JAVA28_IMAGE}} --build-arg JAVA28_BUILD={{.JAVA28_BUILD}} --build-arg JAVA28_SHA256_AMD64={{.JAVA28_SHA256_AMD64}} --build-arg JAVA28_SHA256_ARM64={{.JAVA28_SHA256_ARM64}} .
+
+  build:
+    desc: Build the two Java 28 AOT images
+    deps: [build:jdk]
+    cmds:
+      - task: build:variant
+        vars: {VARIANT: aot-cache-java28, DOCKERFILE: aot-cache}
+      - task: build:variant
+        vars: {VARIANT: spring-aot-aot-cache-java28, DOCKERFILE: spring-aot-aot-cache}
+
+  build:variant:
+    internal: true
+    cmds:
+      - >-
+        docker build --file docker/{{.DOCKERFILE}}.Dockerfile --tag spring-boot-startup/{{.VARIANT}}:latest
+        --build-arg SOURCE_IMAGE={{.SOURCE_IMAGE}} --build-arg BUILDER_IMAGE={{.BUILDER_IMAGE}}
+        --build-arg RUNTIME_IMAGE={{.JAVA28_IMAGE}} --build-arg PETCLINIC_REPO={{.PETCLINIC_REPO}}
+        --build-arg PETCLINIC_REF={{.JAVA28_PETCLINIC_REF}} --build-arg SPRING_BOOT_VERSION={{.SPRING_BOOT_VERSION}}
+        --build-arg "AOT_JAVA_OPTIONS=-XX:+UseG1GC -Xmx{{.JAVA28_MAX_HEAP}}"
+        --label benchmark.petclinic-ref={{.JAVA28_PETCLINIC_REF}} --label benchmark.spring-boot={{.SPRING_BOOT_VERSION}} .
+
+  bench:
+    desc: Measure Java 28 native-code caching sequentially
+    cmds:
+      - task: build
+      - task: measure
+
+  measure:
+    desc: Measure the three already-built Java 28 configurations (15 starts each)
+    cmds:
+      - task: measure:variant
+        vars: {VARIANT: aot-cache-java28, JVM_OPTIONS: '-XX:AOTMode=required'}
+      - task: measure:variant
+        vars: {VARIANT: aot-cache-java28-no-aot-code, IMAGE_VARIANT: aot-cache-java28, JVM_OPTIONS: '-XX:AOTMode=required -XX:+UnlockDiagnosticVMOptions -XX:-AOTCodeCaching'}
+      - task: measure:variant
+        vars: {VARIANT: spring-aot-aot-cache-java28, JVM_OPTIONS: '-XX:AOTMode=required'}
+      - task: report
+
+  measure:variant:
+    internal: true
+    vars:
+      IMAGE_VARIANT: '{{default .VARIANT .IMAGE_VARIANT}}'
+    cmds:
+      - >-
+        go run ./cmd/startup-bench run --variant {{.VARIANT}} --image spring-boot-startup/{{.IMAGE_VARIANT}}:latest
+        --docker-run-arg=--env --docker-run-arg="JDK_JAVA_OPTIONS={{.JVM_OPTIONS}}"
+        --runs {{.BENCH_RUNS}} --timeout {{.STARTUP_TIMEOUT}} --poll-interval {{.POLL_INTERVAL}}
+        --endpoint {{.ENDPOINT_PATH}} --container-port {{.CONTAINER_PORT}} --output {{.JAVA28_RESULTS_DIR}}/{{.VARIANT}}.json
+
+  report:
+    desc: Summarize the Java 28 experiment separately from the Java 27 suite
+    cmds:
+      - go run ./cmd/startup-bench report --input-dir {{.JAVA28_RESULTS_DIR}} --output {{.JAVA28_RESULTS_DIR}}/summary.md

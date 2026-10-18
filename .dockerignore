@@ -1,0 +1,6 @@
+.git
+results
+run/pulumi/.pulumi
+run/pulumi/Pulumi.*.yaml
+*.exe
+*.log

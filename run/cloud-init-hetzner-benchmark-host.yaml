@@ -14,8 +14,8 @@ write_files:
       export DEBIAN_FRONTEND=noninteractive
       export PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-      GO_VERSION=1.26.2
-      TASK_VERSION=v3.45.4
+      GO_VERSION=1.27.2
+      TASK_VERSION=v3.54.0
       BENCH_ROOT=/opt/spring-boot-startup
       READY_MARKER="${BENCH_ROOT}/.host-ready"
       LOG_FILE=/var/log/bootstrap-spring-boot-startup.log

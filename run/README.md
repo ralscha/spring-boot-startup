@@ -49,6 +49,11 @@ Run the local Go helper from the repository root once the host is back after the
 go run ./cmd/remote-bench --host <server-ip>
 ```
 
+This builds the native-code caches on the benchmark CPU and downloads the nested
+`results/java28/` directory. It also generates a separate Java 28 summary.
+See the [experiment notes](../README.md) for the JEP 544 controls.
+`bench:all` includes these experiments as well.
+
 Useful flags:
 
 - `--identity` to point at a non-default SSH key

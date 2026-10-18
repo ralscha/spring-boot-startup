@@ -1,15 +1,16 @@
-ARG SOURCE_IMAGE=alpine/git:2.52.0
-ARG BUILDER_IMAGE=azul/zulu-openjdk:26-latest
-ARG RUNTIME_IMAGE=azul/zulu-openjdk:26-jre-latest
+ARG SOURCE_IMAGE=alpine/git:2.54.0
+ARG BUILDER_IMAGE=azul-zulu:27-jdk
+ARG RUNTIME_IMAGE=azul-zulu:27-jre
 ARG PETCLINIC_REPO=https://github.com/spring-projects/spring-petclinic.git
-ARG PETCLINIC_REF=main
-ARG SPRING_BOOT_VERSION=4.0.6
+ARG PETCLINIC_REF=500158f732419217507c7656904b8e6aa1bcc0d6
+ARG SPRING_BOOT_VERSION=4.1.1
 
 FROM ${SOURCE_IMAGE} AS source
 ARG PETCLINIC_REPO
 ARG PETCLINIC_REF
 WORKDIR /source
-RUN git clone --depth 1 --branch ${PETCLINIC_REF} ${PETCLINIC_REPO} app
+RUN git init app && cd app && git remote add origin ${PETCLINIC_REPO} \
+    && git fetch --depth 1 origin ${PETCLINIC_REF} && git checkout --detach FETCH_HEAD
 
 FROM ${BUILDER_IMAGE} AS build
 ARG SPRING_BOOT_VERSION
@@ -24,7 +25,7 @@ RUN awk -v spring_boot_version="${SPRING_BOOT_VERSION}" ' \
 	{ print } \
 	END { if (!updated) exit 1 } \
 ' pom.xml > pom.xml.tmp && mv pom.xml.tmp pom.xml
-RUN chmod +x mvnw && ./mvnw -q -DskipTests package
+RUN --mount=type=cache,target=/root/.m2 chmod +x mvnw && ./mvnw -q -DskipTests package
 RUN cp target/spring-petclinic-*.jar /workspace/application.jar
 
 FROM ${RUNTIME_IMAGE}

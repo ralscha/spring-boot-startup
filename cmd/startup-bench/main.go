@@ -24,23 +24,27 @@ const (
 )
 
 type benchmarkResult struct {
-	Variant         string      `json:"variant"`
-	Image           string      `json:"image"`
-	DockerRunArgs   []string    `json:"dockerRunArgs,omitempty"`
-	Endpoint        string      `json:"endpoint"`
-	RunsRequested   int         `json:"runsRequested"`
-	SuccessfulRuns  int         `json:"successfulRuns"`
-	Timeout         string      `json:"timeout"`
-	PollInterval    string      `json:"pollInterval"`
-	Host            string      `json:"host"`
-	ContainerPort   int         `json:"containerPort"`
-	ImageSizeBytes  int64       `json:"imageSizeBytes"`
-	ImageSizeHuman  string      `json:"imageSizeHuman"`
-	GeneratedAt     time.Time   `json:"generatedAt"`
-	Summary         summary     `json:"summary"`
-	Runs            []runRecord `json:"runs"`
-	FailureMessage  string      `json:"failureMessage,omitempty"`
-	FailureLogsTail string      `json:"failureLogsTail,omitempty"`
+	Variant         string            `json:"variant"`
+	Image           string            `json:"image"`
+	ImageID         string            `json:"imageId,omitempty"`
+	ImageLabels     map[string]string `json:"imageLabels,omitempty"`
+	JavaVersion     string            `json:"javaVersion,omitempty"`
+	DockerHost      string            `json:"dockerHost,omitempty"`
+	DockerRunArgs   []string          `json:"dockerRunArgs,omitempty"`
+	Endpoint        string            `json:"endpoint"`
+	RunsRequested   int               `json:"runsRequested"`
+	SuccessfulRuns  int               `json:"successfulRuns"`
+	Timeout         string            `json:"timeout"`
+	PollInterval    string            `json:"pollInterval"`
+	Host            string            `json:"host"`
+	ContainerPort   int               `json:"containerPort"`
+	ImageSizeBytes  int64             `json:"imageSizeBytes"`
+	ImageSizeHuman  string            `json:"imageSizeHuman"`
+	GeneratedAt     time.Time         `json:"generatedAt"`
+	Summary         summary           `json:"summary"`
+	Runs            []runRecord       `json:"runs"`
+	FailureMessage  string            `json:"failureMessage,omitempty"`
+	FailureLogsTail string            `json:"failureLogsTail,omitempty"`
 }
 
 type runRecord struct {
@@ -156,6 +160,22 @@ func runBenchmark(args []string) error {
 		ImageSizeHuman: humanBytes(imageSizeBytes),
 		GeneratedAt:    time.Now().UTC(),
 	}
+	// Collect provenance outside the timed startup interval. Labels include the
+	// pinned application revision; an image ID identifies the actual local build.
+	if metadata, err := runCommand(context.Background(), "docker", "image", "inspect", *image, "--format", "{{json .}}"); err == nil {
+		var info struct {
+			ID     string                             `json:"Id"`
+			Config struct{ Labels map[string]string } `json:"Config"`
+		}
+		if json.Unmarshal([]byte(metadata), &info) == nil {
+			result.ImageID = info.ID
+			result.ImageLabels = info.Config.Labels
+		}
+	}
+	version, _ := runCommand(context.Background(), "docker", "run", "--rm", "--entrypoint", "java", *image, "-version")
+	result.JavaVersion = strings.TrimSpace(version)
+	dockerHost, _ := runCommand(context.Background(), "docker", "info", "--format", "{{.OperatingSystem}}; kernel={{.KernelVersion}}; architecture={{.Architecture}}; cpus={{.NCPU}}; memory={{.MemTotal}}")
+	result.DockerHost = strings.TrimSpace(dockerHost)
 
 	var durations []float64
 	for iteration := 1; iteration <= *runs; iteration++ {
@@ -224,6 +244,9 @@ func writeReport(args []string) error {
 	}
 
 	sort.Slice(results, func(i, j int) bool {
+		if variantOrder(results[i].Variant) == variantOrder(results[j].Variant) {
+			return results[i].Variant < results[j].Variant
+		}
 		return variantOrder(results[i].Variant) < variantOrder(results[j].Variant)
 	})
 
@@ -259,7 +282,9 @@ func executeRun(variant, image string, dockerRunArgs []string, endpoint, host st
 		StartedAt:     start.UTC(),
 	}
 
-	dockerArgs := []string{"run", "-d", "--rm", "--name", containerName}
+	// Keep exited containers until cleanup so an invalid EA JVM option or
+	// incompatible AOT cache remains diagnosable in the failure logs.
+	dockerArgs := []string{"run", "-d", "--name", containerName}
 	dockerArgs = append(dockerArgs, dockerRunArgs...)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%d:%d", hostPort, containerPort), image)
 
@@ -375,8 +400,28 @@ func renderMarkdown(results []benchmarkResult) string {
 		))
 	}
 	builder.WriteString("\n")
-	builder.WriteString("The benchmark measures wall-clock time from `docker run` until the first successful `HTTP 200` response from `/owners/1`.\n")
+	builder.WriteString("The benchmark measures wall-clock time from `docker run` until the first successful `HTTP 200` response from the configured endpoint (default `/owners/1`).\n")
+	comparisons := []struct{ name, control, candidate string }{
+		{"JEP 544: AOT cache, native code enabled", "aot-cache-java28-no-aot-code", "aot-cache-java28"},
+	}
+	byVariant := make(map[string]benchmarkResult, len(results))
+	for _, result := range results {
+		byVariant[result.Variant] = result
+	}
+	for _, comparison := range comparisons {
+		control, controlOK := byVariant[comparison.control]
+		candidate, candidateOK := byVariant[comparison.candidate]
+		if !controlOK || !candidateOK || !completeResult(control) || !completeResult(candidate) {
+			continue
+		}
+		change := 100 * (candidate.Summary.MedianMS/control.Summary.MedianMS - 1)
+		fmt.Fprintf(&builder, "\n- %s: %.2f ms → %.2f ms (%+.2f%% median time; negative is faster).\n", comparison.name, control.Summary.MedianMS, candidate.Summary.MedianMS, change)
+	}
 	return builder.String()
+}
+
+func completeResult(result benchmarkResult) bool {
+	return result.RunsRequested > 0 && result.SuccessfulRuns == result.RunsRequested && result.FailureMessage == "" && result.Summary.MedianMS > 0
 }
 
 func variantOrder(variant string) int {
@@ -391,6 +436,12 @@ func variantOrder(variant string) int {
 		return 3
 	case "crac":
 		return 4
+	case "aot-cache-java28-no-aot-code":
+		return 5
+	case "aot-cache-java28":
+		return 6
+	case "spring-aot-aot-cache-java28":
+		return 7
 	default:
 		return 100
 	}
@@ -424,7 +475,7 @@ func runCommand(ctx context.Context, name string, args ...string) (string, error
 func stopContainer(containerName string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, _ = runCommand(ctx, "docker", "stop", "--time", "0", containerName)
+	_, _ = runCommand(ctx, "docker", "rm", "--force", containerName)
 }
 
 func reservePort(host string) (int, error) {
