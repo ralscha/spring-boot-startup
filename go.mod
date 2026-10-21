@@ -1,6 +1,6 @@
 module spring-boot-startup
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/docker/go-sdk/client v0.1.0-alpha013
