@@ -3,8 +3,8 @@ module spring-boot-startup
 go 1.27.3
 
 require (
-	github.com/docker/go-sdk/client v0.1.0-alpha013
-	github.com/docker/go-sdk/container v0.1.0-alpha016
+	github.com/docker/go-sdk/client v0.1.0-alpha014
+	github.com/docker/go-sdk/container v0.1.0-alpha017
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
 )
@@ -22,10 +22,10 @@ require (
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.8.2 // indirect
-	github.com/docker/go-sdk/config v0.1.0-alpha013 // indirect
-	github.com/docker/go-sdk/context v0.1.0-alpha013 // indirect
-	github.com/docker/go-sdk/image v0.1.0-alpha015 // indirect
-	github.com/docker/go-sdk/network v0.1.0-alpha013 // indirect
+	github.com/docker/go-sdk/config v0.1.0-alpha014 // indirect
+	github.com/docker/go-sdk/context v0.1.0-alpha014 // indirect
+	github.com/docker/go-sdk/image v0.1.0-alpha016 // indirect
+	github.com/docker/go-sdk/network v0.1.0-alpha014 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -36,7 +36,7 @@ require (
 	github.com/moby/go-archive v0.3.3 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
-	github.com/moby/sys/user v0.4.1 // indirect
+	github.com/moby/sys/user v0.5.0 // indirect
 	github.com/moby/sys/userns v0.2.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
@@ -49,6 +49,6 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 )
